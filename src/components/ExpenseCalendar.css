@@ -1,0 +1,16 @@
+button {
+    position: relative;
+    padding: 10px;
+    border: 1px solid transparent;
+  }
+  
+  button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+  
+  .expense-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  

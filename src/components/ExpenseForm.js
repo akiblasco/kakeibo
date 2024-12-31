@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useKakeibo } from '../context/KakeiboContext';
+import { EXPENSE_CATEGORIES } from '../constants/categories';
 
 export function ExpenseForm() {
   const { dispatch } = useKakeibo();

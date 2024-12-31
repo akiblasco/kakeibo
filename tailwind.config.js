@@ -3,28 +3,40 @@ module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
-  darkMode: 'class',
   theme: {
     extend: {
+      animation: {
+        'spin-slow': 'spin 3s linear infinite',
+      },
       colors: {
-        primary: {
-          light: '#ffffff',
-          dark: '#1d1d1f',
-        },
-        secondary: {
-          light: '#f5f5f7',
-          dark: '#2d2d2f',
-        },
-        accent: '#0071e3',
         category: {
-          essentials: '#34c759',
-          wants: '#ff9f0a',
-          culture: '#5856d6',
-          extras: '#ff2d55',
+          housing: {
+            start: "#3b82f6", // blue-500
+            end: "#6366f1", // indigo-500
+          },
+          subscriptions: {
+            start: "#a855f7", // purple-500
+            end: "#ec4899", // pink-500
+          },
+          daily: {
+            start: "#22c55e", // green-400
+            end: "#14b8a6", // teal-400
+          },
+          wants: {
+            start: "#facc15", // yellow-400
+            end: "#fb923c", // orange-500
+          },
+          leisure: {
+            start: "#f472b6", // pink-500
+            end: "#ef4444", // red-500
+          },
+          unexpected: {
+            start: "#f87171", // red-400
+            end: "#991b1b", // red-700
+          },
         },
       },
     },
   },
   plugins: [],
-}
-
+};

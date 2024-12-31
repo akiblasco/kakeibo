@@ -1,62 +1,63 @@
-import { useEffect, useState } from 'react';
-import { KakeiboProvider } from './context/KakeiboContext';
-import { ExpenseForm } from './components/ExpenseForm';
-import { ExpenseHistory } from './components/ExpenseHistory';
-import { BudgetAnalytics } from './components/BudgetAnalytics';
-import { SavingsGoal } from './components/SavingsGoal';
-import { useLocalStorage } from './hooks/useLocalStorage';
+import { useKakeibo } from './context/KakeiboContext';
+import { Overview } from './components/Overview';
+import { Income } from './components/Income';
+import { ExpenseTab, ExpenseTracker } from './components/ExpenseTab';
+import { SavingsGoals } from './components/SavingsGoals';
 
-function AppContent() {
-  const [darkMode, setDarkMode] = useState(false);
-  useLocalStorage();
+export function App() {
+  const { state, dispatch } = useKakeibo();
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) setDarkMode(savedTheme === 'dark');
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
+  const navigateTo = (section) => {
+    dispatch({ type: 'SET_ACTIVE_SECTION', payload: section });
+  };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'dark bg-primary-dark text-white' : 'bg-primary-light text-gray-900'}`}>
-      <header className="p-8 flex justify-center items-center relative">
-        <button 
-          onClick={() => setDarkMode(!darkMode)}
-          className="absolute right-8 cursor-pointer text-2xl"
-        >
-          {darkMode ? '☀️' : '🌙'}
-        </button>
-        <h1 className="text-3xl font-bold">Kakeibo</h1>
+    <div className="min-h-screen bg-gray-100 text-gray-900">
+      <header className="bg-white shadow">
+        <nav className="container mx-auto p-4 flex space-x-6">
+          <button
+            onClick={() => navigateTo('overview')}
+            className={`hover:underline ${
+              state.activeSection === 'overview' ? 'font-bold text-blue-600' : ''
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => navigateTo('income')}
+            className={`hover:underline ${
+              state.activeSection === 'income' ? 'font-bold text-blue-600' : ''
+            }`}
+          >
+            Income
+          </button>
+          <button
+            onClick={() => navigateTo('expenses')}
+            className={`hover:underline ${
+              state.activeSection === 'expenses' ? 'font-bold text-blue-600' : ''
+            }`}
+          >
+            Expenses
+          </button>
+          <button
+            onClick={() => navigateTo('savings')}
+            className={`hover:underline ${
+              state.activeSection === 'savings' ? 'font-bold text-blue-600' : ''
+            }`}
+          >
+            Savings
+          </button>
+        </nav>
       </header>
-      
-      <main className="max-w-7xl mx-auto p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <section className="widget">
-          <h2 className="text-xl font-semibold mb-4">Monthly Overview</h2>
-          <ExpenseForm />
-        </section>
 
-        <section className="widget">
-          <BudgetAnalytics />
-        </section>
-
-        <section className="widget">
-          <SavingsGoal />
-        </section>
-
-        <section className="widget col-span-full">
-          <ExpenseHistory />
-        </section>
+      <main className="container mx-auto p-6">
+        {state.activeSection === 'overview' && <Overview />}
+        {state.activeSection === 'income' && <Income />}
+        {state.activeSection === 'expenses' && <ExpenseTab />}
+        {state.activeSection === 'savings' && <SavingsGoals />}
       </main>
     </div>
   );
 }
 
-export default function App() {
-  return (
-    <KakeiboProvider>
-      <AppContent />
-    </KakeiboProvider>
-  );
-}
+export default App;

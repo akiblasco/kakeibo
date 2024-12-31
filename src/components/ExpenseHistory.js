@@ -1,4 +1,5 @@
-import { useKakeibo } from '../context/KakeiboContext';
+import { useKakeibo } from '../context/KakeiboContext'; // Import useKakeibo
+import { EXPENSE_CATEGORIES } from '../constants/categories'; // Import EXPENSE_CATEGORIES
 
 export function ExpenseHistory() {
   const { state } = useKakeibo();
@@ -8,25 +9,22 @@ export function ExpenseHistory() {
       <h2 className="text-xl font-semibold">Recent Expenses</h2>
       <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto">
         {state.expenses.slice().reverse().map(expense => (
-          <div 
-            key={expense.id} 
-            className={`flex justify-between items-center p-4 bg-white/5 rounded-lg border-l-4 transition-transform hover:translate-x-2
-              ${expense.category === 'essentials' && 'border-category-essentials'}
-              ${expense.category === 'wants' && 'border-category-wants'}
-              ${expense.category === 'culture' && 'border-category-culture'}
-              ${expense.category === 'extras' && 'border-category-extras'}
-            `}
+          <div
+            key={expense.id}
+            className={`flex justify-between items-center p-4 bg-gray-100 rounded-lg shadow ${
+              EXPENSE_CATEGORIES[expense.category]?.color || ''
+            }`}
           >
-            <div className="flex flex-col">
-              <span className="font-medium">{expense.description}</span>
-              <span className="text-sm opacity-70">{expense.date}</span>
+            <div>
+              <h4 className="font-medium">{expense.description}</h4>
+              <p className="text-sm text-gray-500">{expense.date}</p>
             </div>
-            <span className="font-semibold text-accent">
-              ¥{expense.amount.toLocaleString()}
-            </span>
+            <p className="font-bold">
+              {state.income.currency} {expense.amount.toLocaleString()}
+            </p>
           </div>
         ))}
       </div>
     </div>
   );
-} 
+}
