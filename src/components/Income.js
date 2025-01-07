@@ -3,7 +3,7 @@ import { useKakeibo } from "../context/KakeiboContext";
 import { CurrencyDollarIcon, ChartPieIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
 
 export function Income() {
-  const { state, dispatch } = useKakeibo();
+  const { state, saveIncome } = useKakeibo();
   const [isEditing, setIsEditing] = useState(!state.income);
   const [formValues, setFormValues] = useState({
     amount: state.income?.amount || 0,
@@ -48,7 +48,7 @@ export function Income() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const monthlyGross =
@@ -64,24 +64,32 @@ export function Income() {
     const monthlySpendable = monthlyNet - monthlySavings;
     const yearlySpendable = yearlyNet - yearlySavings;
 
-    dispatch({
-      type: "SET_INCOME",
-      payload: {
-        ...formValues,
-        monthlyGross: parseFloat(monthlyGross.toFixed(2)),
-        yearlyGross: parseFloat(yearlyGross.toFixed(2)),
-        monthlyTax: parseFloat(monthlyTax.toFixed(2)),
-        yearlyTax: parseFloat(yearlyTax.toFixed(2)),
-        monthlyNet: parseFloat(monthlyNet.toFixed(2)),
-        yearlyNet: parseFloat(yearlyNet.toFixed(2)),
-        monthlySavings: parseFloat(monthlySavings.toFixed(2)),
-        yearlySavings: parseFloat(yearlySavings.toFixed(2)),
-        monthlySpendable: parseFloat(monthlySpendable.toFixed(2)),
-        yearlySpendable: parseFloat(yearlySpendable.toFixed(2)),
-      },
-    });
+    const incomeData = {
+      amount: parseFloat(formValues.amount),
+      income_type: formValues.incomeType,
+      currency: formValues.currency,
+      tax_rate: parseFloat(formValues.taxRate),
+      savings_percentage: parseFloat(formValues.savingsPercentage),
+      monthly_gross: parseFloat(monthlyGross.toFixed(2)),
+      yearly_gross: parseFloat(yearlyGross.toFixed(2)),
+      monthly_tax: parseFloat(monthlyTax.toFixed(2)),
+      yearly_tax: parseFloat(yearlyTax.toFixed(2)),
+      monthly_net: parseFloat(monthlyNet.toFixed(2)),
+      yearly_net: parseFloat(yearlyNet.toFixed(2)),
+      monthly_savings: parseFloat(monthlySavings.toFixed(2)),
+      yearly_savings: parseFloat(yearlySavings.toFixed(2)),
+      monthly_spendable: parseFloat(monthlySpendable.toFixed(2)),
+      yearly_spendable: parseFloat(yearlySpendable.toFixed(2))
+    };
 
-    setIsEditing(false);
+    try {
+      console.log('Submitting income data:', incomeData);
+      await saveIncome(incomeData);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving income:', error);
+      alert('Failed to save income data. Please try again. Error: ' + error.message);
+    }
   };
 
   const renderRow = (icon, label, value, color = "text-gray-800") => (

@@ -1,48 +1,75 @@
-import { useState, useMemo } from "react";
-import { useKakeibo } from "../context/KakeiboContext";
+import React, { useState } from 'react';
+import { useKakeibo } from '../context/KakeiboContext';
 import { ProgressBar } from "./ProgressBar";
 import { motion, AnimatePresence } from "framer-motion";
+import { PlusIcon, MinusIcon } from "@heroicons/react/24/outline";
 
 export function SavingsGoals() {
-  const { state, dispatch } = useKakeibo();
+  const { 
+    state, 
+    saveSavingsGoal, 
+    updateSavingsGoal, 
+    deleteSavingsGoal,
+    updateSavingsPool,
+    loadUserData
+  } = useKakeibo();
+  
   const [isAddingGoal, setIsAddingGoal] = useState(false);
+  const [isAddingToPool, setIsAddingToPool] = useState(false);
   const [newGoal, setNewGoal] = useState({
     name: "",
     targetAmount: "",
     deadline: new Date().toISOString().split("T")[0],
   });
-  const [adjustments, setAdjustments] = useState({}); // Track input values for each goal
+  const [adjustments, setAdjustments] = useState({});
+  const [poolAdjustment, setPoolAdjustment] = useState("");
 
-  // Calculate Total Recurring and Regular Expenses
-  const recurringExpensesTotal = useMemo(
-    () =>
-      (state.recurringExpenses || []).reduce(
-        (sum, expense) => sum + expense.amount,
-        0
-      ),
-    [state.recurringExpenses]
-  );
+  // Calculate totals
+  const savingsPool = state.savingsPool || 0;
+  const allocatedSavings = state.savingsGoals.reduce((total, goal) => 
+    total + parseFloat(goal.current_amount || 0), 0);
+  // Update total savings to be just the sum of allocated savings and pool
+  const totalSavings = parseFloat(savingsPool) + parseFloat(allocatedSavings);
 
-  const regularExpensesTotal = useMemo(
-    () =>
-      (state.expenses || []).reduce((sum, expense) => sum + expense.amount, 0),
-    [state.expenses]
-  );
+  // Get monthly savings target from income calculations
+  const monthlySavingsTarget = state.income?.monthlySavings || 0;
 
-  const totalExpenses = recurringExpensesTotal + regularExpensesTotal;
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: state.income?.currency || 'USD',
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
 
-  // Remaining Monthly Income After Tax and Savings
-  const remainingMonthlyIncome =
-    state.income?.monthlyNet - recurringExpensesTotal || 0;
-  const remainingMonthlyAfterSavings =
-    state.income?.monthlySpendable - recurringExpensesTotal || 0;
+  // Add monthly savings to pool
+  const handleAddMonthlySavings = async () => {
+    if (!monthlySavingsTarget) {
+      alert("No monthly savings target set. Please set your income first.");
+      return;
+    }
 
-  // Available for Savings
-  const totalSaved = state.savings?.total || 0;
-  const availableForSavings = Math.max(remainingMonthlyAfterSavings - totalSaved, 0);
+    try {
+      // Add monthly savings to existing pool amount
+      const newPoolAmount = parseFloat(savingsPool) + parseFloat(monthlySavingsTarget);
+      console.log('Adding monthly savings to pool:', {
+        currentPool: savingsPool,
+        monthlySavingsTarget,
+        newPoolAmount
+      });
+      await updateSavingsPool(newPoolAmount);
+      
+      // Reload data to ensure UI is updated
+      await loadUserData();
+    } catch (error) {
+      console.error('Error adding monthly savings:', error);
+      alert('Failed to add monthly savings. Please try again.');
+    }
+  };
 
   // Add New Savings Goal
-  const handleAddGoal = (event) => {
+  const handleAddGoal = async (event) => {
     event.preventDefault();
 
     if (!newGoal.name || !newGoal.targetAmount) {
@@ -50,25 +77,29 @@ export function SavingsGoals() {
       return;
     }
 
-    const goal = {
-      id: "_" + Math.random().toString(36).substr(2, 9), // Generate a unique ID
+    const goalData = {
       name: newGoal.name,
-      targetAmount: parseFloat(newGoal.targetAmount),
-      currentAmount: 0,
+      target_amount: parseFloat(newGoal.targetAmount),
+      current_amount: 0,
       deadline: newGoal.deadline,
     };
 
-    dispatch({ type: "ADD_SAVINGS_GOAL", payload: goal });
-    setIsAddingGoal(false);
-    setNewGoal({
-      name: "",
-      targetAmount: "",
-      deadline: new Date().toISOString().split("T")[0],
-    });
+    try {
+      await saveSavingsGoal(goalData);
+      setIsAddingGoal(false);
+      setNewGoal({
+        name: "",
+        targetAmount: "",
+        deadline: new Date().toISOString().split("T")[0],
+      });
+    } catch (error) {
+      console.error('Error saving goal:', error);
+      alert('Failed to save savings goal. Please try again.');
+    }
   };
 
-  // Adjust Savings for Goals
-  const handleAdjustGoal = (goalId, actionType) => {
+  // Allocate money from pool to goal
+  const handleAllocateToGoal = async (goalId) => {
     const amount = Number(adjustments[goalId] || 0);
 
     if (amount <= 0) {
@@ -76,151 +107,223 @@ export function SavingsGoals() {
       return;
     }
 
-    const goal = state.savingsGoals.find((g) => g.id === goalId);
+    if (amount > savingsPool) {
+      alert("Amount exceeds available funds in savings pool.");
+      return;
+    }
 
+    const goal = state.savingsGoals.find((g) => g.id === goalId);
     if (!goal) {
       alert("Goal not found.");
       return;
     }
 
-    const updatedAmount =
-      actionType === "add"
-        ? goal.currentAmount + amount
-        : goal.currentAmount - amount;
+    try {
+      // Update pool first to prevent race conditions
+      const newPoolAmount = parseFloat(savingsPool) - parseFloat(amount);
+      await updateSavingsPool(newPoolAmount);
+      
+      // Then update goal amount
+      const newAmount = parseFloat(goal.current_amount || 0) + parseFloat(amount);
+      await updateSavingsGoal(goalId, { current_amount: newAmount });
+      
+      // Clear adjustment input
+      setAdjustments((prev) => ({ ...prev, [goalId]: "" }));
+    } catch (error) {
+      console.error('Error allocating to goal:', error);
+      alert('Failed to allocate funds. Please try again.');
+    }
+  };
 
-    if (updatedAmount < 0) {
-      alert("Cannot subtract more than the current saved amount.");
+  // Return money from goal to pool
+  const handleReturnToPool = async (goalId) => {
+    const amount = Number(adjustments[goalId] || 0);
+    const goal = state.savingsGoals.find((g) => g.id === goalId);
+
+    if (amount <= 0) {
+      alert("Please enter a valid amount.");
       return;
     }
 
-    dispatch({
-      type: "UPDATE_SAVINGS_GOAL",
-      payload: {
-        goalId,
-        currentAmount: updatedAmount,
-      },
-    });
+    if (amount > (goal.current_amount || 0)) {
+      alert("Cannot return more than the allocated amount.");
+      return;
+    }
 
-    setAdjustments((prev) => ({ ...prev, [goalId]: "" })); // Reset input value for the specific goal
+    try {
+      // Update goal amount first
+      const newAmount = parseFloat(goal.current_amount || 0) - parseFloat(amount);
+      await updateSavingsGoal(goalId, { current_amount: newAmount });
+      
+      // Then update pool
+      const newPoolAmount = parseFloat(savingsPool) + parseFloat(amount);
+      await updateSavingsPool(newPoolAmount);
+      
+      // Clear adjustment input
+      setAdjustments((prev) => ({ ...prev, [goalId]: "" }));
+    } catch (error) {
+      console.error('Error returning to pool:', error);
+      alert('Failed to return funds. Please try again.');
+    }
+  };
+
+  // Handle Savings Pool
+  const handleAdjustPool = async (actionType) => {
+    const amount = Number(poolAdjustment);
+    if (amount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
+    let newPoolAmount;
+    if (actionType === "add") {
+      newPoolAmount = savingsPool + amount;
+    } else {
+      if (amount > savingsPool) {
+        alert("Cannot withdraw more than available in pool.");
+        return;
+      }
+      newPoolAmount = savingsPool - amount;
+    }
+
+    try {
+      await updateSavingsPool(newPoolAmount);
+      setPoolAdjustment("");
+      setIsAddingToPool(false);
+    } catch (error) {
+      console.error('Error updating savings pool:', error);
+      alert('Failed to update savings pool. Please try again.');
+    }
   };
 
   // Delete Savings Goal
-  const handleDeleteGoal = (goalId) => {
-    dispatch({ type: "DELETE_SAVINGS_GOAL", payload: goalId });
+  const handleDeleteGoal = async (goalId) => {
+    const goal = state.savingsGoals.find((g) => g.id === goalId);
+    if (goal && goal.current_amount > 0) {
+      // Return funds to savings pool first
+      const newPoolAmount = savingsPool + goal.current_amount;
+      await updateSavingsPool(newPoolAmount);
+    }
+    
+    try {
+      await deleteSavingsGoal(goalId);
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+      alert('Failed to delete savings goal. Please try again.');
+    }
   };
 
   return (
     <div className="space-y-12">
       {/* Savings Overview */}
-      <div className="widget">
-        <h2 className="text-2xl font-semibold">Savings Overview</h2>
-        <div className="flex flex-col md:flex-row gap-6 mt-4">
-          <div className="flex-1 grid grid-cols-1 gap-4">
-            <div className="bg-gray-50 p-4 rounded-lg shadow">
-              <p className="text-sm font-medium text-gray-500">Total Expenses</p>
-              <p className="text-lg font-bold text-red-500">
-                {state.income.currency} {totalExpenses.toLocaleString()}
-              </p>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg shadow">
-              <p className="text-sm font-medium text-gray-500">
-                Remaining Monthly Income After Tax
-              </p>
-              <p
-                className={`text-lg font-bold ${
-                  remainingMonthlyIncome >= 0 ? "text-green-500" : "text-red-500"
-                }`}
-              >
-                {state.income.currency} {remainingMonthlyIncome.toLocaleString()}
-              </p>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg shadow">
-              <p className="text-sm font-medium text-gray-500">
-                Available for Savings
-              </p>
-              <p
-                className={`text-lg font-bold ${
-                  availableForSavings >= 0 ? "text-blue-500" : "text-red-500"
-                }`}
-              >
-                {state.income.currency} {availableForSavings.toLocaleString()}
-              </p>
-            </div>
+      <div className="widget p-6 bg-white/5 rounded-xl">
+        <h2 className="text-2xl font-semibold mb-6">Savings Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="p-4 bg-white/5 rounded-lg">
+            <h3 className="text-sm text-gray-400 mb-2">Total Savings</h3>
+            <p className="text-lg font-medium text-green-400">
+              {formatCurrency(totalSavings)}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              Monthly Target: {formatCurrency(monthlySavingsTarget)}
+            </p>
+            <button
+              onClick={handleAddMonthlySavings}
+              className="mt-4 px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              Add Monthly Target to Pool
+            </button>
+          </div>
+          <div className="p-4 bg-white/5 rounded-lg">
+            <h3 className="text-sm text-gray-400 mb-2">Available in Pool</h3>
+            <p className="text-lg font-medium text-green-400">
+              {formatCurrency(savingsPool)}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              Allocated to Goals: {formatCurrency(allocatedSavings)}
+            </p>
+            <button
+              onClick={() => setIsAddingToPool(true)}
+              className="mt-4 px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition-colors text-sm"
+            >
+              Adjust Pool
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Savings Goals Section */}
-      <div className="widget">
-        <h2 className="text-2xl font-semibold">Savings Goals</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-          {state.savingsGoals.length > 0 ? (
-            state.savingsGoals.map((goal) => (
-              <div
-                key={goal.id}
-                className="bg-gray-50 p-4 rounded-lg shadow space-y-4"
-              >
-                <h3 className="text-lg font-semibold">{goal.name}</h3>
-                <ProgressBar
-                  progress={Math.min(
-                    (goal.currentAmount / goal.targetAmount) * 100 || 0,
-                    100
-                  )}
-                />
-                <p className="text-sm text-gray-600">
-                  {goal.currentAmount.toLocaleString()} /{" "}
-                  {goal.targetAmount.toLocaleString()} {state.income.currency}
-                </p>
-                <div className="flex items-center gap-2 mt-4">
-                  <input
-                    type="number"
-                    value={adjustments[goal.id] || ""}
-                    onChange={(e) =>
-                      setAdjustments((prev) => ({
-                        ...prev,
-                        [goal.id]: e.target.value,
-                      }))
-                    }
-                    placeholder="Enter amount"
-                    className="input-field flex-1"
-                    required
-                    style={{ padding: "0.5rem" }}
-                  />
-                  <button
-                    onClick={() => handleAdjustGoal(goal.id, "add")}
-                    className="btn btn-primary px-3 py-1"
-                  >
-                    +
-                  </button>
-                  <button
-                    onClick={() => handleAdjustGoal(goal.id, "subtract")}
-                    className="btn btn-secondary px-3 py-1"
-                  >
-                    −
-                  </button>
-                </div>
+      {/* Savings Goals */}
+      <div className="widget p-6 bg-white/5 rounded-xl">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-semibold">Savings Goals</h2>
+          <button
+            onClick={() => setIsAddingGoal(true)}
+            className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Add New Goal
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {state.savingsGoals?.map((goal) => (
+            <div key={goal.id} className="p-6 bg-white/5 rounded-xl">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-medium">{goal.name}</h3>
                 <button
                   onClick={() => handleDeleteGoal(goal.id)}
-                  className="text-red-500 text-sm mt-2"
+                  className="text-red-500 hover:text-red-600"
                 >
-                  Delete Goal
+                  Delete
                 </button>
               </div>
-            ))
-          ) : (
-            <p className="text-gray-500">No savings goals added yet.</p>
-          )}
-        </div>
-        <div className="mt-4 text-center">
-          <motion.button
-            onClick={() => setIsAddingGoal(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-full shadow hover:bg-blue-600"
-          >
-            Add Savings Goal
-          </motion.button>
+
+              <ProgressBar
+                progress={((goal.current_amount || 0) / (goal.target_amount || 1)) * 100}
+              />
+
+              <div className="mt-2 flex justify-between items-center text-sm text-gray-400">
+                <span>
+                  {formatCurrency(goal.current_amount || 0)} / {formatCurrency(goal.target_amount || 0)}
+                </span>
+                {goal.deadline && (
+                  <span>
+                    Deadline: {new Date(goal.deadline).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 flex gap-4">
+                <input
+                  type="number"
+                  value={adjustments[goal.id] || ''}
+                  onChange={(e) => setAdjustments(prev => ({
+                    ...prev,
+                    [goal.id]: e.target.value
+                  }))}
+                  placeholder="Amount"
+                  className="flex-1 input-field"
+                />
+                <button
+                  onClick={() => handleAllocateToGoal(goal.id)}
+                  className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                >
+                  <PlusIcon className="w-5 h-5" />
+                  Allocate from Pool
+                </button>
+                <button
+                  onClick={() => handleReturnToPool(goal.id)}
+                  className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                >
+                  <MinusIcon className="w-5 h-5" />
+                  Return to Pool
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
+      {/* Add Goal Modal */}
       <AnimatePresence>
         {isAddingGoal && (
           <>
@@ -272,14 +375,81 @@ export function SavingsGoals() {
                     }
                   />
                 </div>
+                <div className="flex gap-4">
+                  <motion.button
+                    type="submit"
+                    className="flex-1 py-3 bg-gradient-to-r from-blue-400 to-purple-500 rounded-xl shadow-lg text-white font-semibold"
+                    whileHover={{ scale: 1.02 }}
+                  >
+                    Add Goal
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    onClick={() => setIsAddingGoal(false)}
+                    className="px-6 py-3 bg-gray-200 rounded-xl text-gray-800 font-semibold"
+                    whileHover={{ scale: 1.02 }}
+                  >
+                    Cancel
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Adjust Pool Modal */}
+      <AnimatePresence>
+        {isAddingToPool && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddingToPool(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-x-4 top-20 z-50 rounded-3xl bg-white shadow-2xl max-w-lg mx-auto p-6"
+            >
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold">Adjust Savings Pool</h2>
+                <div className="space-y-4">
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    className="input-field"
+                    value={poolAdjustment}
+                    onChange={(e) => setPoolAdjustment(e.target.value)}
+                  />
+                  <div className="flex gap-4">
+                    <motion.button
+                      onClick={() => handleAdjustPool('add')}
+                      className="flex-1 py-3 bg-green-600 rounded-xl text-white font-semibold"
+                      whileHover={{ scale: 1.02 }}
+                    >
+                      Add to Pool
+                    </motion.button>
+                    <motion.button
+                      onClick={() => handleAdjustPool('subtract')}
+                      className="flex-1 py-3 bg-red-600 rounded-xl text-white font-semibold"
+                      whileHover={{ scale: 1.02 }}
+                    >
+                      Withdraw from Pool
+                    </motion.button>
+                  </div>
+                </div>
                 <motion.button
-                  type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-blue-400 to-purple-500 rounded-xl shadow-lg text-white font-semibold"
+                  onClick={() => setIsAddingToPool(false)}
+                  className="w-full py-3 bg-gray-200 rounded-xl text-gray-800 font-semibold"
                   whileHover={{ scale: 1.02 }}
                 >
-                  Add Goal
+                  Cancel
                 </motion.button>
-              </form>
+              </div>
             </motion.div>
           </>
         )}

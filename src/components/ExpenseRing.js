@@ -1,20 +1,12 @@
 import { useEffect, useState } from "react";
 import { useKakeibo } from "../context/KakeiboContext";
+import { EXPENSE_CATEGORIES } from "../constants/categories";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function ExpenseRing() {
   const { state } = useKakeibo();
   const [segments, setSegments] = useState([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
-
-  // Tailwind gradient colors converted to actual hex color stops
-  const EXPENSE_CATEGORIES = {
-    Housing: { startColor: "#3b82f6", endColor: "#6366f1" }, // from-blue-500 to-indigo-500
-    Subscriptions: { startColor: "#a855f7", endColor: "#ec4899" }, // from-purple-500 to-pink-500
-    DailyNeeds: { startColor: "#22c55e", endColor: "#14b8a6" }, // from-green-400 to-teal-400
-    Wants: { startColor: "#facc15", endColor: "#fb923c" }, // from-yellow-400 to-orange-500
-    Leisure: { startColor: "#f472b6", endColor: "#ef4444" }, // from-pink-500 to-red-500
-    Unexpected: { startColor: "#f87171", endColor: "#991b1b" }, // from-red-400 to-red-700
-  };
 
   const size = 280; // Diameter of the ring
   const strokeWidth = 20; // Thickness of the ring
@@ -24,7 +16,7 @@ export function ExpenseRing() {
   useEffect(() => {
     const calculateSegments = () => {
       const combinedExpenses = [...state.expenses, ...state.recurringExpenses];
-      const total = combinedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const total = combinedExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
       setTotalExpenses(total);
 
       if (total === 0) {
@@ -33,7 +25,8 @@ export function ExpenseRing() {
       }
 
       const categoryTotals = combinedExpenses.reduce((acc, expense) => {
-        acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
+        const category = expense.category?.toLowerCase();
+        acc[category] = (acc[category] || 0) + parseFloat(expense.amount);
         return acc;
       }, {});
 
@@ -50,9 +43,9 @@ export function ExpenseRing() {
 
         return {
           category,
-          gradient: EXPENSE_CATEGORIES[category] || {
-            startColor: "#cccccc",
-            endColor: "#999999",
+          gradient: {
+            startColor: EXPENSE_CATEGORIES[category]?.startColor || "#cccccc",
+            endColor: EXPENSE_CATEGORIES[category]?.endColor || "#999999",
           },
           segmentLength,
           startOffset,
@@ -63,14 +56,32 @@ export function ExpenseRing() {
     };
 
     calculateSegments();
-  }, [state.expenses, state.recurringExpenses]);
+  }, [state.expenses, state.recurringExpenses, circumference]);
 
   if (totalExpenses === 0 || segments.length === 0) {
-    return <div className="text-center text-gray-500">No expenses to display</div>;
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="text-center text-gray-500"
+      >
+        No expenses to display
+      </motion.div>
+    );
   }
 
   return (
-    <div className="relative w-[280px] h-[280px] flex items-center justify-center">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8, rotate: -30 }}
+      animate={{ opacity: 1, scale: 1, rotate: 0 }}
+      transition={{
+        duration: 0.5,
+        ease: "easeOut",
+        rotate: { duration: 0.7, ease: "anticipate" }
+      }}
+      className="relative w-[280px] h-[280px] flex items-center justify-center"
+    >
       <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${size} ${size}`}>
         <defs>
           {segments.map((segment, index) => {
@@ -84,34 +95,61 @@ export function ExpenseRing() {
           })}
         </defs>
 
-        {segments.map((segment, index) => (
-          <circle
-            key={index}
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke={`url(#gradient-${index})`}
-            strokeWidth={strokeWidth}
-            strokeDasharray={`${segment.segmentLength} ${circumference - segment.segmentLength}`}
-            strokeDashoffset={-segment.startOffset}
-            strokeLinecap="round"
-            style={{
-              transform: "rotate(-90deg)",
-              transformOrigin: "center",
-              transition: "stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease",
-            }}
-          />
-        ))}
+        <AnimatePresence>
+          {segments.map((segment, index) => (
+            <motion.circle
+              key={index}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={`url(#gradient-${index})`}
+              strokeWidth={strokeWidth}
+              strokeDasharray={`${segment.segmentLength} ${circumference - segment.segmentLength}`}
+              strokeDashoffset={circumference}
+              strokeLinecap="round"
+              initial={{ strokeDashoffset: circumference }}
+              animate={{ 
+                strokeDashoffset: -segment.startOffset,
+                transition: { 
+                  duration: 0.8,
+                  delay: index * 0.1,
+                  ease: "circOut"
+                }
+              }}
+              style={{
+                transform: "rotate(-90deg)",
+                transformOrigin: "center",
+              }}
+            />
+          ))}
+        </AnimatePresence>
       </svg>
 
-      <div className="absolute flex flex-col items-center justify-center text-center">
-        <span className="text-2xl font-light">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+        className="absolute flex flex-col items-center justify-center text-center"
+      >
+        <motion.span
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.5, ease: "easeOut" }}
+          className="text-2xl font-light"
+        >
           {state.income?.currency || "$"}
           {totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-        <span className="text-sm text-gray-500">Monthly Spend</span>
-      </div>
-    </div>
+        </motion.span>
+        <motion.span
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8, duration: 0.5 }}
+          className="text-sm text-gray-500"
+        >
+          Monthly Spend
+        </motion.span>
+      </motion.div>
+    </motion.div>
   );
 }
